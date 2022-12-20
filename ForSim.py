@@ -1,86 +1,53 @@
 import numpy as np
-import sys
-sys.path.append("../input/mps-mcmc/")
-from misc_inversion import *
+from scipy import signal
+# from scipy.ndimage import gaussian_filter1d
+from scipy.ndimage import gaussian_filter
 
-def ForSim(input_data, nt_limit, n_theta, noise, snr):
+def ForSim(input_data, k_cut, noise, snr):
     
     [nz,ncmp] = input_data.shape
 
-    Rho = np.zeros(input_data.shape)
-    Vp = np.zeros(input_data.shape)
-    Vs = np.zeros(input_data.shape)
+    AI = np.zeros(input_data.shape)
     
-    Rho = np.where(input_data == 0, 2.3, 2.5)
-    Vp = np.where(input_data == 0, 2.8, 3.2)
-    Vs = np.where(input_data == 0, 1.6, 1.8)
+    AI = np.where(input_data == 0, 6.0, 10.0)
     
-    dz = 0.001 
+    # nfilt = 3
+    # cutofffr = k_cut
+    # b, a = signal.butter(nfilt, cutofffr,btype='lowpass')
     
-    Depth = np.arange(nz) * 0.001
+    AI_sm = np.zeros(AI.shape)
     
-    # travel time
-    dt = 0.001
-    t0 = 0.0
-    temp = np.cumsum(np.diff(Depth,axis=0)/Vp[1:,int(np.round(ncmp/2))-1])
-    TimeLog = np.append(t0, t0+2*temp)
-    Time = np.arange(TimeLog[0],TimeLog[-1],dt)
+    # for i in range(ncmp):
     
-    # number of samples (seismic properties)
-    nt = len(Time) - 1
+        # Vp_sm[:,i] = signal.filtfilt(b, a, np.squeeze(Vp[:,i]))
+        
+        # Vp_sm[:,i] = gaussian_filter1d(np.squeeze(Vp[:,i]),3)
+        
+    AI_sm = gaussian_filter(np.squeeze(AI),7)  #7
     
-    #%%
-    #% Wavelet
-    # wavelet 
-    freq = 45 #45
-    ntw = 64
-    wavelet, tw = RickerWavelet(freq, dt, ntw)
-    
-    
-    # reflection angles 
-    ntheta = n_theta
-    max_theta = 45
-    theta = np.linspace(0,max_theta,ntheta)
-    
-    
-    Seis = np.zeros((nt,ntheta * ncmp))
-    
+    #%%   
     Noise = noise
     SNR = snr
+      
+    AI_noise = AI_sm
     
+    if Noise == 1:
     
-    Vp_t = np.zeros((nt+1,ncmp))
-    Vs_t = np.zeros((nt+1,ncmp))
-    Rho_t = np.zeros((nt+1,ncmp))
-    
-    for CMP in range(ncmp):
-        
-        # time-interpolated elastic log
-        Vp_t[:,CMP] = np.interp(Time, TimeLog, np.squeeze(Vp[:,CMP]))
-        Vs_t[:,CMP] = np.interp(Time, TimeLog, np.squeeze(Vs[:,CMP]))
-        Rho_t[:,CMP] = np.interp(Time, TimeLog, np.squeeze(Rho[:,CMP]))
-        
-        #% Synthetic seismic data
-        tmp_seis, _ = SeismicModel(Vp_t[:,CMP], Vs_t[:,CMP], Rho_t[:,CMP], Time, theta, wavelet)
-        
-        if Noise == 1:
-            for i in range(tmp_seis.shape[1]):
-                SignalRMS = np.sqrt(np.mean(np.power(tmp_seis,2)))
+        for CMP in range(ncmp):
+            
+            tmp_AI = np.reshape(AI_noise[:,CMP],[-1,1])
+            
+            for i in range(tmp_AI.shape[1]):
+                SignalRMS = np.sqrt(np.mean(np.power(tmp_AI,2)))
                 # np.random.seed(0)
-                NoiseTD = np.random.randn(len(tmp_seis[:,i]),1)
+                NoiseTD = np.random.randn(len(tmp_AI[:,i]),1)
                 NoiseRMS = np.sqrt(np.mean(np.power(NoiseTD,2)))
-                New = np.reshape(tmp_seis[:,i],[-1,1]) + (SignalRMS/NoiseRMS) * np.power(10,-SNR/20) * NoiseTD
-                tmp_seis[:,i] = New[:,0]
+                New = np.reshape(tmp_AI[:,i],[-1,1]) + (SignalRMS/NoiseRMS) * np.power(10,-SNR/20) * NoiseTD
+                # New = np.reshape(tmp_AI[:,i],[-1,1]) + np.sqrt(np.square(np.mean(tmp_AI))/SNR) * NoiseTD
+                tmp_AI[:,i] = New[:,0]
+            
+            AI_noise[:,CMP] = tmp_AI.ravel()
         
-        Seis[:,CMP * ntheta:(CMP+1)*ntheta] = np.reshape(tmp_seis,[ntheta,nt]).T
+        AI_noise = AI_sm + np.sqrt(np.square(np.mean(AI_sm))/SNR) * np.random.randn(nz,ncmp)  
         
-    if nt < nt_limit:
-        Seis_sim = np.zeros((nt_limit,ntheta*ncmp))
-        Time_sim = np.zeros((nt_limit,))
-        Seis_sim = np.append(Seis,np.tile(Seis[-1,:],(nt_limit-nt,1)),0)
-        Time_sim = np.append(Time,(np.arange(nt_limit-nt)+1)*dt+Time[-1],0)
-    else:
-        Seis_sim = Seis
-        Time_sim = Time
-        
-    return Seis_sim[:nt_limit,:], Time_sim[:nt_limit] 
+    return AI_noise
