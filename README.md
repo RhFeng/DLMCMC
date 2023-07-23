@@ -2,8 +2,7 @@
 
 ## Large data files
 
-Because of Github space limits, the trained CGANs models are not provided herein. 
-But these are of course available. Please drop me an email if you want to get these files. 
+The trained CGANs model is available at https://zenodo.org/record/7275609. 
 
 ## License
 
